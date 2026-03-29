@@ -1,0 +1,111 @@
+# Canonical sector name -> list of variants found in AMC factsheets
+# Used by normalizer to standardize sector names
+
+Financial Services:
+  - "Financials"
+  - "BFSI"
+  - "Banking & Financial Services"
+  - "Banks"
+  - "Banking"
+  - "Financial"
+  - "Financial Services - Banks"
+  - "Financial Services - Insurance"
+  - "Financial Services - Others"
+
+Information Technology:
+  - "IT"
+  - "Technology"
+  - "Information Tech"
+  - "IT - Software"
+  - "IT - Services"
+  - "Software & Services"
+  - "Tech"
+
+Healthcare:
+  - "Pharma"
+  - "Pharmaceuticals"
+  - "Pharma & Healthcare"
+  - "Health Care"
+  - "Healthcare Services"
+  - "Pharmaceutical & Biotechnology"
+  - "Pharmaceuticals & Biotechnology"
+
+Consumer Staples:
+  - "FMCG"
+  - "Fast Moving Consumer Goods"
+  - "Consumer Non-Durables"
+  - "Consumer Staple"
+  - "Food & Beverages"
+  - "Food Beverage & Tobacco"
+
+Consumer Discretionary:
+  - "Consumer Durables"
+  - "Consumer Discretionary Goods"
+  - "Retailing"
+  - "Retail"
+  - "Consumer Services"
+  - "Textiles"
+  - "Media & Entertainment"
+  - "Media Entertainment & Publication"
+
+Automobile:
+  - "Automobiles"
+  - "Auto"
+  - "Automobile & Auto Components"
+  - "Auto Components"
+  - "Automobiles & Auto Components"
+
+Energy:
+  - "Oil & Gas"
+  - "Oil Gas & Consumable Fuels"
+  - "Petroleum Products"
+  - "Power"
+  - "Energy - Oil & Gas"
+
+Materials:
+  - "Metals & Mining"
+  - "Metals"
+  - "Chemicals"
+  - "Cement"
+  - "Cement & Cement Products"
+  - "Construction Materials"
+  - "Building Materials"
+
+Industrials:
+  - "Capital Goods"
+  - "Industrial"
+  - "Engineering"
+  - "Infrastructure"
+  - "Construction"
+  - "Industrial Manufacturing"
+  - "Aerospace & Defense"
+  - "Defence"
+
+Utilities:
+  - "Power Utilities"
+  - "Electric Utilities"
+  - "Utility"
+
+Telecommunication:
+  - "Telecom"
+  - "Telecommunications"
+  - "Telecom Services"
+  - "Telecommunication Services"
+
+Real Estate:
+  - "Realty"
+  - "Real Estate & REITs"
+  - "Housing"
+
+Diversified:
+  - "Conglomerate"
+  - "Diversified Financials"
+  - "Multi Sector"
+
+Cash & Equivalents:
+  - "Cash"
+  - "Cash & Cash Equivalents"
+  - "Net Current Assets"
+  - "TREPS"
+  - "Reverse Repo"
+  - "Treasury Bills"

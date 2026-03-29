@@ -1,0 +1,80 @@
+schedule:
+  mode: "weekly"  # "daily" or "weekly"
+  day_of_week: "mon"
+  hour: 6
+  minute: 0
+
+output:
+  excel_path: "data/output/factsheet_master_{date}.xlsx"
+  sqlite_path: null  # Phase 2
+  keep_raw_pdfs: true
+
+fetcher:
+  timeout_seconds: 30
+  max_retries: 3
+  retry_delay_seconds: 5
+  user_agent_rotation: true
+  concurrent_downloads: 5
+  delay_between_requests_min: 2
+  delay_between_requests_max: 5
+  css_selectors:
+    # Fallback selectors for finding factsheet PDF links
+    default:
+      - "a[href$='.pdf']"
+      - "a[href*='factsheet']"
+      - "a[href*='Factsheet']"
+      - "a[href*='fact-sheet']"
+
+amcs:
+  - name: "HDFC Mutual Fund"
+    slug: "hdfc"
+    factsheet_index_url: "https://www.hdfcfund.com/literature/factsheets"
+    type: "consolidated"
+    parser_class: "hdfc"
+    css_selectors:
+      - "a[href*='factsheet'][href$='.pdf']"
+      - "a[href*='Factsheet'][href$='.pdf']"
+    keywords:
+      - "factsheet"
+      - "monthly"
+
+  - name: "ICICI Prudential"
+    slug: "icici"
+    factsheet_index_url: "https://www.icicipruamc.com/downloads/factsheets"
+    type: "consolidated"
+    parser_class: "icici"
+    css_selectors:
+      - "a[href*='factsheet'][href$='.pdf']"
+      - "a[href*='FactSheet'][href$='.pdf']"
+    keywords:
+      - "factsheet"
+      - "monthly"
+
+  - name: "SBI Mutual Fund"
+    slug: "sbi"
+    factsheet_index_url: "https://www.sbimf.com/en-us/information-centre"
+    type: "consolidated"
+    parser_class: "sbi"
+    css_selectors:
+      - "a[href*='factsheet'][href$='.pdf']"
+      - "a[href*='Factsheet'][href$='.pdf']"
+    keywords:
+      - "factsheet"
+      - "monthly"
+
+target_schemes: []
+
+extraction_fields:
+  - fund_manager_name
+  - fund_manager_since
+  - portfolio_turnover
+  - top_10_holdings
+  - sector_allocation
+  - pe_ratio
+  - pb_ratio
+  - aum
+  - expense_ratio
+  - benchmark
+  - inception_date
+  - nav
+  - nav_date
