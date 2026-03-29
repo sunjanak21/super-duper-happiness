@@ -48,7 +48,11 @@ def load_config(path: str) -> dict:
 # Pipeline
 # ---------------------------------------------------------------------------
 
-async def run_pipeline(config: dict) -> None:
+async def run_pipeline(
+    config: dict,
+    force_download: bool = False,
+    target_amcs: list[str] | None = None,
+) -> None:
     """Execute the full factsheet pipeline.
 
     Steps:
@@ -61,8 +65,19 @@ async def run_pipeline(config: dict) -> None:
 
     Args:
         config: Full pipeline configuration dictionary.
+        force_download: Re-download PDFs even if cached locally.
+        target_amcs: If provided, only crawl these AMC slugs.
     """
     logger.info("Pipeline started")
+
+    # Apply runtime overrides to config
+    if force_download:
+        config.setdefault("fetcher", {})["force_download"] = True
+    if target_amcs:
+        config["amcs"] = [
+            a for a in config.get("amcs", []) if a["slug"] in target_amcs
+        ]
+        logger.info("Filtered to target AMCs: %s", target_amcs)
 
     # 1. Fetch factsheets
     amc_configs = config.get("amcs", [])
@@ -105,16 +120,14 @@ async def run_pipeline(config: dict) -> None:
     total_warnings = sum(len(s.parse_warnings) for s in enriched)
     output_path = export_to_excel(enriched, config)
 
-    # 6. Summary
+    # 6. Summary — printed in exact format parsed by the GitHub Actions workflow
     total_failures = len(failures) + parse_failure_count
-    logger.info(
-        "Pipeline complete: %d schemes parsed, %d warnings, %d failures. "
-        "Output: %s",
-        len(enriched),
-        total_warnings,
-        total_failures,
-        output_path,
+    summary = (
+        f"Pipeline complete. Schemes parsed: {len(enriched)} | "
+        f"Warnings: {total_warnings} | Failures: {total_failures}"
     )
+    print(summary)
+    logger.info("%s. Output: %s", summary, output_path)
 
 
 # ---------------------------------------------------------------------------
@@ -198,14 +211,31 @@ def main() -> None:
         action="store_true",
         help="Run the pipeline immediately instead of waiting for the schedule",
     )
+    parser.add_argument(
+        "--force-download",
+        action="store_true",
+        help="Re-download PDFs even if cached locally",
+    )
+    parser.add_argument(
+        "--amcs",
+        type=str,
+        default="",
+        help="Comma-separated AMC slugs to crawl (empty = all)",
+    )
     args = parser.parse_args()
 
     _setup_logging()
     config = load_config(args.config)
 
+    target_amcs = [s.strip() for s in args.amcs.split(",") if s.strip()] or None
+
     if args.run_now:
         logger.info("Immediate run requested via --run-now")
-        asyncio.run(run_pipeline(config))
+        asyncio.run(run_pipeline(
+            config,
+            force_download=args.force_download,
+            target_amcs=target_amcs,
+        ))
         return
 
     # Scheduled execution

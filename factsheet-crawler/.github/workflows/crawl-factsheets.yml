@@ -1,0 +1,243 @@
+name: Crawl Factsheets
+
+on:
+  schedule:
+    # 6:00 AM IST = 00:30 UTC (IST is UTC+5:30)
+    - cron: '30 0 * * 1'  # Every Monday
+
+  workflow_dispatch:
+    inputs:
+      amcs:
+        description: 'Comma-separated AMC slugs to crawl (leave empty for all)'
+        required: false
+        default: ''
+      force_download:
+        description: 'Force re-download even if PDFs exist in cache'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: factsheet-crawl
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        working-directory: factsheet-crawler
+
+    steps:
+      # --- Setup ---
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('factsheet-crawler/requirements.txt') }}
+          restore-keys: pip-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # --- Cache raw PDFs ---
+      # Persist downloaded PDFs across runs so we don't re-download
+      # unchanged factsheets. Cache key rotates per run but restores
+      # from any previous key prefix.
+
+      - name: Cache raw PDFs
+        uses: actions/cache@v4
+        with:
+          path: factsheet-crawler/data/raw
+          key: raw-pdfs-${{ format('{0}-{1}', github.run_id, github.run_attempt) }}
+          restore-keys: |
+            raw-pdfs-
+
+      # --- Install system dependencies for PDF parsing ---
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ghostscript libgl1-mesa-glx
+
+      # --- Run Pipeline ---
+
+      - name: Run factsheet crawler
+        id: crawl
+        env:
+          FORCE_DOWNLOAD: ${{ github.event.inputs.force_download || 'false' }}
+          TARGET_AMCS: ${{ github.event.inputs.amcs || '' }}
+        run: |
+          # Build CLI args
+          ARGS="--run-now"
+          if [ "$FORCE_DOWNLOAD" = "true" ]; then
+            ARGS="$ARGS --force-download"
+          fi
+          if [ -n "$TARGET_AMCS" ]; then
+            ARGS="$ARGS --amcs $TARGET_AMCS"
+          fi
+
+          python main.py $ARGS 2>&1 | tee pipeline.log
+
+          # Extract summary stats from log for Slack notification
+          SCHEMES_PARSED=$(grep -oP 'Schemes parsed: \K\d+' pipeline.log || echo "0")
+          WARNINGS=$(grep -oP 'Warnings: \K\d+' pipeline.log || echo "0")
+          FAILURES=$(grep -oP 'Failures: \K\d+' pipeline.log || echo "0")
+
+          echo "schemes_parsed=$SCHEMES_PARSED" >> $GITHUB_OUTPUT
+          echo "warnings=$WARNINGS" >> $GITHUB_OUTPUT
+          echo "failures=$FAILURES" >> $GITHUB_OUTPUT
+
+          # Set the output filename
+          OUTPUT_FILE=$(ls data/output/factsheet_master_*.xlsx 2>/dev/null | head -1)
+          if [ -z "$OUTPUT_FILE" ]; then
+            echo "::error::No output Excel file found"
+            exit 1
+          fi
+          echo "output_file=$OUTPUT_FILE" >> $GITHUB_OUTPUT
+          echo "output_basename=$(basename $OUTPUT_FILE)" >> $GITHUB_OUTPUT
+
+      # --- Upload as GitHub Release ---
+
+      - name: Generate release tag
+        id: tag
+        run: |
+          TAG="crawl-$(date -u +'%Y-%m-%d-%H%M')"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "date_display=$(date -u +'%d %b %Y')" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "Factsheet Crawl — ${{ steps.tag.outputs.date_display }}"
+          body: |
+            ## Crawl Summary
+            - **Schemes parsed:** ${{ steps.crawl.outputs.schemes_parsed }}
+            - **Warnings:** ${{ steps.crawl.outputs.warnings }}
+            - **Failures:** ${{ steps.crawl.outputs.failures }}
+            - **Trigger:** ${{ github.event_name == 'schedule' && 'Scheduled (weekly)' || 'Manual' }}
+          files: |
+            factsheet-crawler/${{ steps.crawl.outputs.output_file }}
+            factsheet-crawler/pipeline.log
+          draft: false
+          prerelease: false
+
+      # --- Upload log as artifact (retained for 30 days) ---
+
+      - name: Upload pipeline log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-log-${{ steps.tag.outputs.tag }}
+          path: factsheet-crawler/pipeline.log
+          retention-days: 30
+
+      # --- Slack Notifications ---
+
+      - name: Notify Slack (success)
+        if: success()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "No Slack webhook configured, skipping notification"
+            exit 0
+          fi
+
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.tag }}"
+
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d @- <<SLACKEOF
+          {
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "Factsheet Crawl Complete"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {"type": "mrkdwn", "text": "*Schemes Parsed:*\n${{ steps.crawl.outputs.schemes_parsed }}"},
+                  {"type": "mrkdwn", "text": "*Warnings:*\n${{ steps.crawl.outputs.warnings }}"},
+                  {"type": "mrkdwn", "text": "*Failures:*\n${{ steps.crawl.outputs.failures }}"},
+                  {"type": "mrkdwn", "text": "*Trigger:*\n${{ github.event_name == 'schedule' && 'Scheduled' || 'Manual' }}"}
+                ]
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Download Excel"},
+                    "url": "$RELEASE_URL"
+                  }
+                ]
+              }
+            ]
+          }
+          SLACKEOF
+
+      - name: Notify Slack (failure)
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            exit 0
+          fi
+
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d @- <<SLACKEOF
+          {
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "Factsheet Crawl Failed"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "The weekly factsheet crawl failed. Check the logs for details."
+                }
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "View Logs"},
+                    "url": "$RUN_URL"
+                  }
+                ]
+              }
+            ]
+          }
+          SLACKEOF

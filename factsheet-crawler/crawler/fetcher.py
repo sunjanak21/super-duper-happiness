@@ -338,12 +338,14 @@ async def fetch_factsheet_for_amc(
     base_delay = fetcher_config.get("retry_delay_seconds", 5)
     timeout = fetcher_config.get("timeout_seconds", 30)
 
+    force_download = fetcher_config.get("force_download", False)
+
     # Destination path.
     dest_dir = Path(base_dir) / "data" / "raw" / amc_slug
     dest_path = dest_dir / f"{date_str}.pdf"
 
-    # Idempotent: skip if already downloaded today.
-    if dest_path.exists() and dest_path.stat().st_size > 0:
+    # Idempotent: skip if already downloaded today (unless force_download).
+    if not force_download and dest_path.exists() and dest_path.stat().st_size > 0:
         logger.info("Already downloaded %s for %s – skipping.", dest_path, amc_name)
         return DownloadResult(
             path=str(dest_path),
